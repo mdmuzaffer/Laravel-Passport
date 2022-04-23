@@ -1,0 +1,329 @@
+
+
+LARAVEL PASSPORT DOCUMENTATION
+-------------------------------
+
+1. Create project - composer create-project --prefer-dist laravel/laravel blog
+
+Setup database
+------------
+
+DB_CONNECTION=mysql 
+DB_HOST=127.0.0.1 
+DB_PORT=3306 
+DB_DATABASE=here your database name here
+DB_USERNAME=here database username here
+DB_PASSWORD=here database password here
+
+2. composer require laravel/passport
+
+ // config/app.php
+
+'providers' =>[
+ Laravel\Passport\PassportServiceProvider::class,
+ ],
+
+Step 3: Install Passport Auth
+
+ php artisan passport:install
+
+ ---------------------------------
+
+Step 4: Passport Configuration
+In this step, Navigate to App/Models directory and open User.php file. Then update the following code into User.php:
+---------------
+
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+//use Laravel\Sanctum\HasApiTokens;
+use Laravel\Passport\HasApiTokens;
+
+
+---------------
+
+Next Register passport routes in App/Providers/AuthServiceProvider.php, Go to App/Providers/AuthServiceProvider.php and update this line => Register Passport::routes(); inside of boot method:
+
+----------------
+
+<?php
+
+namespace App\Providers;
+
+use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
+use Illuminate\Support\Facades\Gate;
+use Laravel\Passport\Passport;
+
+class AuthServiceProvider extends ServiceProvider
+{
+    /**
+     * The policy mappings for the application.
+     *
+     * @var array<class-string, class-string>
+     */
+    protected $policies = [
+         'App\Models\Model' => 'App\Policies\ModelPolicy',
+    ];
+
+    /**
+     * Register any authentication / authorization services.
+     *
+     * @return void
+     */
+    public function boot()
+    {
+        $this->registerPolicies();
+        Passport::routes();
+    }
+}
+------------------------------
+
+
+
+Next, Navigate to config/auth.php and open auth.php file. Then Change the API driver to the session to passport. Put this code ‘driver’ => ‘passport’, in API :
+
+
+[ 
+         'web' => [ 
+             'driver' => 'session', 
+             'provider' => 'users', 
+         ], 
+         'api' => [ 
+             'driver' => 'passport', 
+             'provider' => 'users', 
+         ], 
+     ],
+
+
+======================================
+
+Step 5: Run Migration
+
+
+php artisan migrate
+
+Step 6: Create APIs Route
+
+-----------------------------------------------
+
+<?php
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\Apicontroller;
+
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+|
+| Here is where you can register API routes for your application. These
+| routes are loaded by the RouteServiceProvider within a group which
+| is assigned the "api" middleware group. Enjoy building your API!
+|
+*/
+
+/* Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+    return $request->user();
+}); */
+
+ 
+Route::post('register', [Apicontroller::class, 'register']);
+Route::post('login', [Apicontroller::class, 'login']);
+  
+Route::middleware('auth:api')->group(function () {
+    Route::get('get-user', [Apicontroller::class, 'userInfo']);
+	Route::post('logout', [Apicontroller::class, 'logout']);
+});
+
+
+============================
+
+Now create controller
+
+-----------------
+
+php artisan make:controller Api\ApiController
+
+
+--------------------------
+
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
+use Laravel\Passport\TokenRepository;
+use Laravel\Passport\RefreshTokenRepository;
+
+class Apicontroller extends Controller
+{
+    /**
+     * Registration Req
+     */
+    public function register(Request $request)
+    {
+	/* echo"<pre>";
+	print_r($request->all());
+	die; */
+        $this->validate($request, [
+            'name' => 'required|min:4',
+            'email' => 'required|email',
+            'password' => 'required|min:8',
+        ]);
+  
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => bcrypt($request->password)
+        ]);
+  
+        $token = $user->createToken('Laravel8PassportAuth')->accessToken;
+  
+        return response()->json(['token' => $token], 200);
+    }
+	
+	
+	 /**
+     * Login Req
+     */
+    public function login(Request $request)
+    {
+        $data = [
+            'email' => $request->email,
+            'password' => $request->password
+        ];
+  
+        if (auth()->attempt($data)) {
+            $token = auth()->user()->createToken('Laravel8PassportAuth')->accessToken;
+            return response()->json(['success',['token' => $token], 200]);
+        } else {
+            return response()->json(['error' => 'Unauthorised'], 401);
+        }
+    }
+ 
+    public function userInfo() 
+    {
+ 
+     $user = auth()->user();
+      
+     return response()->json(['user' => $user], 200);
+ 
+    }
+	
+	public function logout()
+    {
+        $access_token = auth()->user()->token();
+
+        // logout from only current device
+        $tokenRepository = app(TokenRepository::class);
+        $tokenRepository->revokeAccessToken($access_token->id);
+
+        // use this method to logout from all devices
+        // $refreshTokenRepository = app(RefreshTokenRepository::class);
+        // $refreshTokenRepository->revokeRefreshTokensByAccessTokenId($$access_token->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User logout successfully.'
+        ], 200);
+    }
+  
+}
+
+============================
+
+
+Now postman documentation
+
+1. Register
+-------------
+Url - http://localhost/reactapi/public/api/register
+Method - Post
+Body -> Form-data
+
+name:muzaffer
+email:muzaffer@gmail.com
+password:123123123
+
+It giving tioken result
+---------------------------
+
+{
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiMzFmNjA1ZjYzZTM1NjAwNTExMTA3NzM3ODFkNzZkYWM0MDkwYTYyMDQ1MTQ5OTJiOTBmMTA3NDRiZmY0NWQ5M2U0OGE3MDRkZDZhYjczZmMiLCJpYXQiOjE2NTA2OTkwNjMuNTcyODMxLCJuYmYiOjE2NTA2OTkwNjMuNTcyODM3LCJleHAiOjE2ODIyMzUwNjMuMjQ5NDk0LCJzdWIiOiIxIiwic2NvcGVzIjpbXX0.BzxaAP3y4I8yTvSNiycD7eCHAE4oROx0wnWnQhpS6mgMpeKquk-fVFadvIsUThPkPYz4-D8kar-IuEuGMiBeczWW_qMmU2eKH3MJkaU6G5P5M-L185arQYpY8dR1g57b_WmAKJZhKdyUEBllQ1hG82yB6Iq9oxvM836DiDveU1yKkys7ZCLBdBrXg2KkqZ4_on1qZ6Jba9DFmVStIxjb9dtTwabD__nGVYTzCGkcZJJQDOxDdhsHnlBRZHu2sfoFGJqQoLfBnonjVEEHuvN61oL0X_uC2SDqrClz09271qqQT_BWSsE1k2D_9bWn5Jc40WZ4IXLfdsNo216J2cr-NKbjEOu7ry896w1wd_7KiMVyoe01RfdlvJL2yw37tkeFnYrchKKFq-3jpToHZhGFR7A1YTPstFADvj5RTct1R_x0eSQM9zRTVFIjuU4UZ5GQzsNSOuliknomiS5_Gq20EdY66rMlDyD2kHCSDdgfADQwdJpVaEl6ib8bxHABxS8es2471WmwDZEGgIPBvrfHEhX5KVoooHbgQT6XUjFvEkuhCYJjwQu60uRxAe3eK8qNTw8rRf5mv8IUzqUqw6tBCnYhOc7IcxKfT6kqCCqtSMSd_2J0Vun2CNV2S-cjDmBdVF6xSjNs6olpGIhMtdN9qbDK1xtIPLs39j_RSSU8pQo"
+}
+
+
+2. Login 
+-------------
+Url- http://localhost/reactapi/public/api/login
+
+Method - Post
+Body -> Form-data
+
+email:muzaffer@gmail.com
+password:123123123
+
+
+Result:-
+--------------
+
+[
+    "success",
+    {
+        "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiODU0MmM1NWVjNWQxMTczMzcwNTdkYWNmYjgyZThjOGQzZDVmYTgzOWRlMWM4Mzc2MTRlNGFlM2EyNDAzMzhkYjQ5NWUxMTdmM2ZkYTM1ZmUiLCJpYXQiOjE2NTA3MDEzNTUuNTgzMDEsIm5iZiI6MTY1MDcwMTM1NS41ODMwMTUsImV4cCI6MTY4MjIzNzM1NS4yNjM5MTYsInN1YiI6IjEiLCJzY29wZXMiOltdfQ.eFkD_XbOyrEI4U3WcnfAPotf2vbzlWR07FWMVX_-zSrHOdwBcVdraXn8ntNHU6eWoPwUp2hvAKkqdog8qhunMwOLAFpQoq4t-ToYkEAg_Uf1IXSCVDXsxmA7vV-ZQNyqqdI9-YXkiyIUaErRQj-iAF6Fno1V4uVCBoQGtin8MF6GpsG67iKaRu4-tXhpiy6uM-uGo6HmRToOA32802dmZU43iFpV4TfwMl5Qg9EeZHJG3PIxVzhwXitAQ2ZiepKrIttP6rhj36FdgvCl5eOmX4IFoR9SK31Sgp4DwIAvOI2yPd_KAo7aALPHNDxwySaG8QpnXQTBzZQGkxuHc1CcNYj47UFmVs4sUyPFvJwUnzIsFX8VSUIDbdFXjYHzmbjxvuJRT_YE1vfajB1KEHYZlndgLlvdn2vpblyENQkBhPC2mnTGEOQK0lFe_VYd2PzdMUrgAyfDqyHJst5hv39KVzVU3IvpYk46ETzWkKbFgrEUItr6ZLECP6n6EICi4G4WEcMKDV8fyhp9Em_pxmGdd2TeEWzEfpAkdFMDDucnBXkivWk7D8wxqO44ddZail_7j_jc3wOEeqg2izylB_O0kiWmTvyg1TqwHxAdHHMTGbJ_IDAV7vTErjXkqj55kERIStpB7dXBmz2rzYKG-gK6rcWTohiWBbA1trF48oxqED0"
+    },
+    200
+]
+
+
+3. Get login user data
+-----------------------
+
+Uel- http://localhost/reactapi/public/api/get-user
+
+
+Method - get
+Header:-
+
+Accept:application/json
+Authorization:Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiODU0MmM1NWVjNWQxMTczMzcwNTdkYWNmYjgyZThjOGQzZDVmYTgzOWRlMWM4Mzc2MTRlNGFlM2EyNDAzMzhkYjQ5NWUxMTdmM2ZkYTM1ZmUiLCJpYXQiOjE2NTA3MDEzNTUuNTgzMDEsIm5iZiI6MTY1MDcwMTM1NS41ODMwMTUsImV4cCI6MTY4MjIzNzM1NS4yNjM5MTYsInN1YiI6IjEiLCJzY29wZXMiOltdfQ.eFkD_XbOyrEI4U3WcnfAPotf2vbzlWR07FWMVX_-zSrHOdwBcVdraXn8ntNHU6eWoPwUp2hvAKkqdog8qhunMwOLAFpQoq4t-ToYkEAg_Uf1IXSCVDXsxmA7vV-ZQNyqqdI9-YXkiyIUaErRQj-iAF6Fno1V4uVCBoQGtin8MF6GpsG67iKaRu4-tXhpiy6uM-uGo6HmRToOA32802dmZU43iFpV4TfwMl5Qg9EeZHJG3PIxVzhwXitAQ2ZiepKrIttP6rhj36FdgvCl5eOmX4IFoR9SK31Sgp4DwIAvOI2yPd_KAo7aALPHNDxwySaG8QpnXQTBzZQGkxuHc1CcNYj47UFmVs4sUyPFvJwUnzIsFX8VSUIDbdFXjYHzmbjxvuJRT_YE1vfajB1KEHYZlndgLlvdn2vpblyENQkBhPC2mnTGEOQK0lFe_VYd2PzdMUrgAyfDqyHJst5hv39KVzVU3IvpYk46ETzWkKbFgrEUItr6ZLECP6n6EICi4G4WEcMKDV8fyhp9Em_pxmGdd2TeEWzEfpAkdFMDDucnBXkivWk7D8wxqO44ddZail_7j_jc3wOEeqg2izylB_O0kiWmTvyg1TqwHxAdHHMTGbJ_IDAV7vTErjXkqj55kERIStpB7dXBmz2rzYKG-gK6rcWTohiWBbA1trF48oxqED0
+
+
+Result:-
+--------------
+
+{
+    "user": {
+        "id": 1,
+        "name": "muzaffer",
+        "email": "muzaffer@gmail.com",
+        "email_verified_at": null,
+        "created_at": "2022-04-23T07:31:01.000000Z",
+        "updated_at": "2022-04-23T07:31:01.000000Z"
+    }
+}
+
+
+===========================
+
+4. Logout
+--------------
+
+Url- http://localhost/reactapi/public/api/logout
+
+Header:-
+Accept:application/json
+Authorization:Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiYmE2MWE4NGZiNmQ3ZWMwMzNkMTVmN2U2MjU2NDE1ZDc1ZWU1YTM5YTdkZGU5MDkxN2U3Y2U5ZTVlYTBhZTQzOTZlMjA1YzIwMzJkYjEzNWIiLCJpYXQiOjE2NTA2OTk3NTcuNDc0MDg1LCJuYmYiOjE2NTA2OTk3NTcuNDc0MDksImV4cCI6MTY4MjIzNTc1Ny4zNzIyOSwic3ViIjoiMSIsInNjb3BlcyI6W119.lBgdL5DNdffw1L1EYOIgRpL6JOMTV2mQ0R67iHUSeFtvuPwAolSruV3iXXSV05q1avykZ7WFsrkbZLzoBGQqhCorquIE4gZiqlycYgG0g9A--cvdWrONETUrsy3ySRH8ONUKUeJfsYNeVl9_4ocfdD280TLe2QxN5Ax9ndzcxasNOSsemjB1JmMwDWrVwhqyyeYy8HbPVm-7sViqnQ2KnGxdgXmJ6ynzswrEvrv9YrtPw33rdE0KDwj6uUH8MPyLhBh-KBPTIpp1Smu0hvN9n0qZ0XxdsNwXxNnSte1iefawc_85CVKz7Mbipu_RJbYB0bKsWun0FkS58tfPSfkT779gznfQjHI6Kc1a2lM9UKx1jzwpiofeCLbPE7hi4BdKJP33Wa7T-Cvd9_7s3S9x59vSNmTaEuVlPLYlDoRBFSADPMyZEm-Vp45HMJkSha3mFwv2KDtWf6-fzwr-PjkqmxVFtQTqvKoZmZwf8nXezNm7BEAwk-YLpicyC5BXz0IBQRXqGKj5aUf4YN-m7JGa7sJHZNi-dfEx6HhlYUK20MxzlfAVHr6jtQ1FY1Zgar5RItEgFRybNW-PKUguzb0bytaBjCwo65sY8MIVcgIxbN43eYCkqIJVkzzzF5PlCjNnemX1zYY4n9wIP8Bz3xVwyTvWF555eLoWNSWmUkqKd_A
+
+Result:
+------------
+{
+    "success": true,
+    "message": "User logout successfully."
+}
+
